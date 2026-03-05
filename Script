@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         BNT EzyParts Restricted Part Alert (Checkout Trigger)
 // @namespace    http://tampermonkey.net/
-// @version      3.0
-// @description  Alerts when restricted Napa filters appear during checkout
+// @version      3.1
+// @description  Highlights restricted Napa filters while browsing and alerts during checkout
 // @match        https://ezyparts.bntnz.co.nz/*
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
@@ -96,7 +96,7 @@ function loadRestrictedList(callback){
 
 
 // ---------------- SCAN FOR RESTRICTED PARTS ----------------
-function scanForRestricted(){
+function scanForRestricted(alertMode = false){
 
     if(!listLoaded) return;
 
@@ -115,7 +115,7 @@ function scanForRestricted(){
 
         if(restrictedParts.has(partNorm)){
 
-            cell.style.background = "#ffd6d6";
+            cell.style.background = alertMode ? "#ffd6d6" : "#fff3b0";
             cell.style.border = "3px solid red";
 
             foundParts.push(partText);
@@ -124,7 +124,7 @@ function scanForRestricted(){
 
     });
 
-    if(foundParts.length && !alertTriggered){
+    if(alertMode && foundParts.length && !alertTriggered){
 
         alertTriggered = true;
 
@@ -135,8 +135,7 @@ function scanForRestricted(){
 
 ${uniqueParts.join("\n")}
 
-DO NOT submit order until reviewed.`
-        );
+DO NOT submit order until reviewed.`);
 
         console.warn("[BNT ALERT] Restricted parts detected:", uniqueParts);
 
@@ -145,8 +144,8 @@ DO NOT submit order until reviewed.`
 }
 
 
-// ---------------- START OBSERVER ----------------
-function startMonitoring(){
+// ---------------- CHECKOUT MONITOR ----------------
+function startCheckoutMonitoring(){
 
     console.log("[BNT] Checkout monitoring started");
 
@@ -158,7 +157,7 @@ function startMonitoring(){
 
         clearTimeout(window.bntScanTimeout);
 
-        window.bntScanTimeout = setTimeout(scanForRestricted, 250);
+        window.bntScanTimeout = setTimeout(() => scanForRestricted(true), 250);
 
     });
 
@@ -167,9 +166,31 @@ function startMonitoring(){
         subtree:true
     });
 
-    // extra scans for slow page rendering
     [300,800,1500,3000,5000].forEach(delay => {
-        setTimeout(scanForRestricted, delay);
+        setTimeout(() => scanForRestricted(true), delay);
+    });
+
+}
+
+
+// ---------------- BROWSING MONITOR ----------------
+function startBrowsingMonitoring(){
+
+    console.log("[BNT] Browsing monitoring started");
+
+    if(observer) observer.disconnect();
+
+    observer = new MutationObserver(() => {
+
+        clearTimeout(window.bntScanTimeout);
+
+        window.bntScanTimeout = setTimeout(() => scanForRestricted(false), 250);
+
+    });
+
+    observer.observe(document.body,{
+        childList:true,
+        subtree:true
     });
 
 }
@@ -195,7 +216,9 @@ function watchNavigation(){
             console.log("[BNT] Navigation detected:", lastURL);
 
             if(isCheckoutPage()){
-                startMonitoring();
+                startCheckoutMonitoring();
+            }else{
+                startBrowsingMonitoring();
             }
 
         }
@@ -207,9 +230,10 @@ function watchNavigation(){
         subtree:true
     });
 
-    // direct checkout load
     if(isCheckoutPage()){
-        startMonitoring();
+        startCheckoutMonitoring();
+    }else{
+        startBrowsingMonitoring();
     }
 
 }
