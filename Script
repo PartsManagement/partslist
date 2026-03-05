@@ -1,0 +1,231 @@
+// ==UserScript==
+// @name         BNT EzyParts Restricted Part Alert (Checkout Trigger)
+// @namespace    http://tampermonkey.net/
+// @version      3.0
+// @description  Alerts when restricted Napa filters appear during checkout
+// @match        https://ezyparts.bntnz.co.nz/*
+// @grant        GM_xmlhttpRequest
+// @connect      raw.githubusercontent.com
+// @run-at       document-start
+// ==/UserScript==
+
+(function() {
+'use strict';
+
+console.log("[BNT] Script starting...");
+
+let restrictedParts = new Set();
+let listLoaded = false;
+let alertTriggered = false;
+let observer = null;
+
+const LIST_URL = "https://raw.githubusercontent.com/PartsManagement/partslist/refs/heads/main/Napa%20Filters.txt";
+
+
+// ---------------- NORMALIZE PART NUMBER ----------------
+function normalizePart(str){
+
+    if(!str) return "";
+
+    return str
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g,"")
+        .replace(/[-.]/g,"");
+
+}
+
+
+// ---------------- LOAD RESTRICTED LIST ----------------
+function loadRestrictedList(callback){
+
+    console.log("[BNT] Loading restricted list...");
+
+    GM_xmlhttpRequest({
+
+        method: "GET",
+        url: LIST_URL,
+
+        onload: function(response){
+
+            if(response.status !== 200){
+                console.error("[BNT] Failed to load list:", response.status);
+                return;
+            }
+
+            const lines = response.responseText.split(/\r?\n/);
+
+            lines.forEach(line => {
+
+                const trimmed = line.trim();
+
+                if(!trimmed) return;
+                if(trimmed.startsWith("#")) return;
+                if(trimmed.toUpperCase().includes("FILTER")) return;
+                if(trimmed.toUpperCase().includes("CABIN")) return;
+
+                const parts = trimmed.split(/\s{2,}|\t+/);
+
+                parts.forEach(part => {
+
+                    const normalized = normalizePart(part);
+
+                    if(normalized.length >= 4){
+                        restrictedParts.add(normalized);
+                    }
+
+                });
+
+            });
+
+            console.log("[BNT] Restricted parts loaded:", restrictedParts.size);
+
+            listLoaded = true;
+
+            if(callback) callback();
+
+        },
+
+        onerror: function(err){
+            console.error("[BNT] Error loading restricted list:", err);
+        }
+
+    });
+
+}
+
+
+// ---------------- SCAN FOR RESTRICTED PARTS ----------------
+function scanForRestricted(){
+
+    if(!listLoaded) return;
+
+    const partCells = document.querySelectorAll(".part-no, div[class*='part-no']");
+
+    if(!partCells.length) return;
+
+    let foundParts = [];
+
+    partCells.forEach(cell => {
+
+        const partText = (cell.textContent || "").trim();
+        const partNorm = normalizePart(partText);
+
+        if(!partNorm) return;
+
+        if(restrictedParts.has(partNorm)){
+
+            cell.style.background = "#ffd6d6";
+            cell.style.border = "3px solid red";
+
+            foundParts.push(partText);
+
+        }
+
+    });
+
+    if(foundParts.length && !alertTriggered){
+
+        alertTriggered = true;
+
+        const uniqueParts = [...new Set(foundParts)];
+
+        alert(
+`🚨 RESTRICTED PART DETECTED
+
+${uniqueParts.join("\n")}
+
+DO NOT submit order until reviewed.`
+        );
+
+        console.warn("[BNT ALERT] Restricted parts detected:", uniqueParts);
+
+    }
+
+}
+
+
+// ---------------- START OBSERVER ----------------
+function startMonitoring(){
+
+    console.log("[BNT] Checkout monitoring started");
+
+    if(observer) observer.disconnect();
+
+    alertTriggered = false;
+
+    observer = new MutationObserver(() => {
+
+        clearTimeout(window.bntScanTimeout);
+
+        window.bntScanTimeout = setTimeout(scanForRestricted, 250);
+
+    });
+
+    observer.observe(document.body,{
+        childList:true,
+        subtree:true
+    });
+
+    // extra scans for slow page rendering
+    [300,800,1500,3000,5000].forEach(delay => {
+        setTimeout(scanForRestricted, delay);
+    });
+
+}
+
+
+// ---------------- CHECK FOR CHECKOUT ----------------
+function isCheckoutPage(){
+    return location.href.includes("/checkout");
+}
+
+
+// ---------------- WATCH SPA NAVIGATION ----------------
+function watchNavigation(){
+
+    let lastURL = location.href;
+
+    const navObserver = new MutationObserver(() => {
+
+        if(location.href !== lastURL){
+
+            lastURL = location.href;
+
+            console.log("[BNT] Navigation detected:", lastURL);
+
+            if(isCheckoutPage()){
+                startMonitoring();
+            }
+
+        }
+
+    });
+
+    navObserver.observe(document.body,{
+        childList:true,
+        subtree:true
+    });
+
+    // direct checkout load
+    if(isCheckoutPage()){
+        startMonitoring();
+    }
+
+}
+
+
+// ---------------- INITIALIZE ----------------
+function init(){
+
+    loadRestrictedList(() => {
+
+        watchNavigation();
+
+    });
+
+}
+
+init();
+
+})();
