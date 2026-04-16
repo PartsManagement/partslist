@@ -440,6 +440,12 @@ Tyres:
 225/70R16
 (x2)
 
+Oil Filter:
+
+P551343
+SO248S
+WZ313NM
+Z313
 
 
 Miscellaneous:
