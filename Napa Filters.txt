@@ -1,12 +1,12 @@
 NAPA Air Filters: 
 
-NAF 436     
+NAF436     
 A1619    
 SA224
 WA5146
 CA10654
 
-NAF 209   
+NAF209   
 A1523       
 SA273
 WA1185
