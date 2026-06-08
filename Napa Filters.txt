@@ -306,9 +306,6 @@ ARJ238
 
 Ignition Coils:
 
-IGC-389
-OC432
-
 IGC-398
 
 IGC-460M
